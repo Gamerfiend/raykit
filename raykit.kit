@@ -1,0 +1,135 @@
+include "raylib.h";
+include "raymath.h";
+
+abstract Camera3: Camera3D {
+    public static function new(position: Vector3, target: Vector3, up: Vector3, fovy: Float = 45.0, type: Int = 0): Camera3{
+        return struct Camera3 {
+            position: position,
+            target: target,
+            up: up,
+            fovy: fovy,
+            type: type
+        };
+    }
+
+    public function setCameraMode(type: Int = 0) {
+        SetCameraMode(this, type);
+    }
+
+    public function updateCamera() {
+        UpdateCamera(this);
+    }
+}
+
+#[promote]
+abstract Vector2f: Vector2 {
+    public static function new(n1: Float, n2: Float): Vector2f{
+        return struct Vector2f {
+            x: n1,
+            y: n2
+        };
+    }
+
+    public static function fromVector2(from: Vector2){
+        return Vector2f.new(from.x, from.y);
+    }
+
+    public function add(other: Vector2){
+        this.x = this.x + other.x;
+        this.y = this.y + other.y;
+    }
+
+    public function subtract(other: Vector2){
+        this.x = this.x - other.x;
+        this.y = this.y - other.y;
+    }
+
+    public function print(){
+        printf("Vector2 - (%f, %f)\n", this.x, this.y);
+    }
+
+    rules {
+        ($this += $other) => $this.add($other);
+        ($this -= $other) => $this.subtract($other);
+
+        ($this + $other) => Vector2Add($this, $other);
+        ($this - $other) => Vector2Subtract($this, $other);
+    }
+}
+
+#[promote] 
+abstract Vector3f: Vector3 {
+    public static function new(n1: Float, n2: Float, n3: Float): Vector3f {
+        return struct Vector3f {
+            x: n1,
+            y: n2,
+            z: n3
+        };
+    }
+
+    public static function fromVector3(other: Vector3): Vector3f {
+        return Vector3f.new(other.x, other.y, other.z);
+    }
+
+    public static function zero(): Vector3f {
+        return Vector3f.new(0,0,0);
+    }
+
+    public function copy(): Vector3f {
+        return struct Self { x: this.x, y: this.y, z: this.z };
+    }
+
+    public function set(newVector: Vector3f){
+        this.x = newVector.x;
+        this.y = newVector.y;
+        this.z = newVector.z;
+        return this;
+    }
+
+    public function add(other: Vector3f): Vector3f{
+        return this.set(Vector3Add(this, other));
+    }
+
+    public function subtract(other: Vector3f): Vector3f{
+        this.set(Vector3Subtract(this, other));
+        return this;
+    }
+
+    public function crossProduct(other: Vector3f): Vector3f{
+        this.set(Vector3CrossProduct(this, other));
+        return this;
+    }
+
+    public function multiply(scalar: Float): Vector3f{
+        this.set(Vector3Multiply(this, scalar));
+        return this;
+    }
+
+    public function multiplyVector(other: Vector3f): Vector3f{
+        this.set(Vector3MultiplyV(this, other));
+        return this;
+    }
+
+    public function distance(other: Vector3f): Float{
+        return Vector3Distance(this, other);
+    }
+
+    rules {
+        ($this + $other) => $this.copy().add($other);
+        ($this - $other) => $this.copy().subtract($other);
+
+        ($this += $other) => $this.add($other);
+        ($this -= $other) => $this.subtract($other);
+    }
+}
+
+function main(){
+    var myVector3 = Vector3f.new(12, 24, 12);
+    var otherVector3 = Vector3f.new(12, 24, 12);
+
+    var vecNew = myVector3 + otherVector3;
+    printf("%f\n", vecNew.x);
+
+    var vecw = myVector3 + otherVector3;
+    printf("%f\n", vecw.x);
+}
