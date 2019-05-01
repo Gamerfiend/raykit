@@ -1,9 +1,80 @@
 include "raylib.h";
 include "raymath.h";
 
-abstract Camera3: Camera3D {
-    public static function new(position: Vector3, target: Vector3, up: Vector3, fovy: Float = 45.0, type: Int = 0): Camera3{
-        return struct Camera3 {
+#[promote]
+abstract RMatrix: Matrix {
+    public static function new(): RMatrix {
+        return MatrixIdentity();
+    }
+
+    public function getForward(): RVector3 {
+        return RVector3.new(this.m8, this.m9, this.m10);
+    }
+
+    public function setForward(vector: RVector3): RVector3 {
+        this.m8 = vector.x;
+        this.m9 = vector.y;
+        this.m10 = vector.z;
+    }
+
+    public function getUp(): RVector3 {
+        return RVector3.new(this.m4, this.m5, this.m6);
+    }
+
+    public function setUp(vector: RVector3): Void {
+        this.m4 = vector.x;
+        this.m5 = vector.y;
+        this.m6 = vector.z;
+    }
+
+    rules{
+        ($this.up) => $this.getUp();
+        ($this.up = $vector) => $this.setUp($vector);
+    }
+}
+
+#[promote]
+abstract RQuaternion: Quaternion {
+    public static function new(): RQuaternion {
+        return QuaternionIdentity();
+    }
+
+    public static function fromMatrix(matrix: RMatrix): RQuaternion {
+        return QuaternionFromMatrix(matrix);
+    }
+}
+
+#[promote]
+abstract RModel: Model {
+    public static function new(modelLoc: CString): RModel {
+        return LoadModel(modelLoc); 
+    }
+
+    public function delete(){
+        UnloadModel(this);
+    }
+
+    public function setMaterialTexture(texture: RTexture, map: Int, materialLoc: Int){
+        this.materials[materialLoc].maps[map].texture = texture;
+    }
+}
+
+#[promote]
+abstract RTexture: Texture {
+    public static function new(textureLoc: CString): RTexture {
+        return LoadTexture(textureLoc); 
+    }
+
+    public function delete(){
+        UnloadTexture(this);
+    }
+}
+
+
+#[promote]
+abstract RCamera3D: Camera3D {
+    public static function new(position: Vector3, target: Vector3, up: Vector3, fovy: Float = 45.0, type: Int = 0): RCamera3D{
+        return struct RCamera3D {
             position: position,
             target: target,
             up: up,
@@ -22,16 +93,16 @@ abstract Camera3: Camera3D {
 }
 
 #[promote]
-abstract Vector2f: Vector2 {
-    public static function new(n1: Float, n2: Float): Vector2f{
-        return struct Vector2f {
+abstract RVector2: Vector2 {
+    public static function new(n1: Float, n2: Float): RVector2{
+        return struct RVector2 {
             x: n1,
             y: n2
         };
     }
 
     public static function fromVector2(from: Vector2){
-        return Vector2f.new(from.x, from.y);
+        return RVector2.new(from.x, from.y);
     }
 
     public function add(other: Vector2){
@@ -58,65 +129,73 @@ abstract Vector2f: Vector2 {
 }
 
 #[promote] 
-abstract Vector3f: Vector3 {
-    public static function new(n1: Float, n2: Float, n3: Float): Vector3f {
-        return struct Vector3f {
+abstract RVector3: Vector3 {
+    public static function new(n1: Float, n2: Float, n3: Float): RVector3 {
+        return struct RVector3 {
             x: n1,
             y: n2,
             z: n3
         };
     }
 
-    public static function fromVector3(other: Vector3): Vector3f {
-        return Vector3f.new(other.x, other.y, other.z);
+    public static function fromVector3(other: Vector3):RVector3 {
+        return RVector3.new(other.x, other.y, other.z);
     }
 
-    public static function zero(): Vector3f {
-        return Vector3f.new(0,0,0);
+    public static function zero(): RVector3 {
+        return RVector3.new(0,0,0);
     }
 
-    public function copy(): Vector3f {
+    public function copy(): RVector3 {
         return struct Self { x: this.x, y: this.y, z: this.z };
     }
 
-    public function set(newVector: Vector3f){
+    public function set(newVector: RVector3){
         this.x = newVector.x;
         this.y = newVector.y;
         this.z = newVector.z;
+    }
+
+    public function add(other: RVector3): RVector3{
+        this.set(Vector3Add(this, other));
         return this;
     }
 
-    public function add(other: Vector3f): Vector3f{
-        return this.set(Vector3Add(this, other));
-    }
-
-    public function subtract(other: Vector3f): Vector3f{
+    public function subtract(other: RVector3): RVector3{
         this.set(Vector3Subtract(this, other));
         return this;
     }
 
-    public function crossProduct(other: Vector3f): Vector3f{
+    public function crossProduct(other: RVector3): RVector3{
         this.set(Vector3CrossProduct(this, other));
         return this;
     }
 
-    public function multiply(scalar: Float): Vector3f{
+    public function multiply(scalar: Float): RVector3{
         this.set(Vector3Multiply(this, scalar));
         return this;
     }
 
-    public function multiplyVector(other: Vector3f): Vector3f{
+    public function multiplyVector(other: RVector3): RVector3{
         this.set(Vector3MultiplyV(this, other));
         return this;
     }
 
-    public function distance(other: Vector3f): Float{
+    public function distance(other: RVector3): Float{
         return Vector3Distance(this, other);
     }
 
+    public function normalize(){
+        this.set(Vector3Normalize(this));
+    }
+
+    public function print(){
+        printf("Vector3 - (%f, %f, %f)\n", this.x, this.y, this.z);
+    }
+
     rules {
-        ($this + $other) => $this.copy().add($other);
-        ($this - $other) => $this.copy().subtract($other);
+        ($this + $other) => ($this.copy().add($other));
+        ($this - $other) => ($this.copy().subtract($other));
 
         ($this += $other) => $this.add($other);
         ($this -= $other) => $this.subtract($other);
@@ -124,12 +203,28 @@ abstract Vector3f: Vector3 {
 }
 
 function main(){
-    var myVector3 = Vector3f.new(12, 24, 12);
-    var otherVector3 = Vector3f.new(12, 24, 12);
+    var myVector3 = RVector3.new(12, 24, 12);
+    var otherVector3 = RVector3.new(12, 24, 12);
+    printf("%f\n", myVector3.x);
+    printf("%f\n", otherVector3.x);
 
     var vecNew = myVector3 + otherVector3;
     printf("%f\n", vecNew.x);
+    printf("%f\n", myVector3.x);
+    printf("%f\n", otherVector3.x);
 
     var vecw = myVector3 + otherVector3;
     printf("%f\n", vecw.x);
+    printf("%f\n", myVector3.x);
+    printf("%f\n", otherVector3.x);
+
+    var vecwe = myVector3 + otherVector3;
+    printf("%f\n", vecwe.x);
+    printf("%f\n", myVector3.x);
+    printf("%f\n", otherVector3.x);
+
+    var newVec = myVector3.copy();
+    printf("%f\n", newVec.x);
+    printf("%f\n", myVector3.x);
+    printf("%f\n", otherVector3.x);
 }
