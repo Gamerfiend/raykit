@@ -1,6 +1,107 @@
 include "raylib.h";
 include "raymath.h";
 
+enum RLightType {
+    LightDirectional;
+    LightPoint;
+}
+
+struct RLight {
+    static var lightsCount: Int = 0;
+    static var maxLights: Int = 4;
+    var enabled: Bool;
+    var type: RLightType;
+    var position: RVector3;
+    var target: RVector3;
+    var color: RColor;
+    var shader: RShader;
+    var enabledLoc: Int;
+    var typeLoc: Int;
+    var posLoc: Int;
+    var targetLoc: Int;
+    var colorLoc: Int;
+    //Light CreateLight(int type, Vector3 pos, Vector3 targ, Color color, Shader shader);   
+    public static function new(type: RLightType, position: RVector3, target: RVector3, color: RColor, shader: RShader): Option[RLight] {
+
+        if Self.lightsCount > 4 {
+            return None;
+        }
+       
+        var light = struct RLight {
+            enabled: true,
+            type,
+            position,
+            target,
+            color,
+            shader
+        };
+
+        var lightCount: Int = Self.lightsCount;
+        var shaderSpot: Ptr[Char] = mallocator.alloc((sizeof Char) * 32);
+        shaderSpot = sprintf(shaderSpot, "lights[%d].enabled", Self.lightsCount);
+        light.enabledLoc = shader.getLocation(shaderSpot);
+
+        shaderSpot = sprintf(shaderSpot, "lights[%d].type", Self.lightsCount);
+        light.typeLoc = shader.getLocation(shaderSpot);
+
+        shaderSpot = sprintf(shaderSpot, "lights[%d].position", Self.lightsCount);
+        light.posLoc = shader.getLocation(shaderSpot);
+
+        shaderSpot = sprintf(shaderSpot, "lights[%d].target", Self.lightsCount);
+        light.targetLoc = shader.getLocation(shaderSpot);
+
+        shaderSpot = sprintf(shaderSpot, "lights[%d].color", Self.lightsCount);
+        light.colorLoc = shader.getLocation(shaderSpot);
+
+        mallocator.free(shaderSpot);
+        light.update();
+        Self.lightsCount++;
+
+        return Some(light);
+    }
+
+    public function update() {
+        this.shader.setValue(this.enabledLoc, &this.enabled, ${UNIFORM_INT: Int});
+        this.shader.setValue(this.typeLoc, &this.type, ${UNIFORM_INT: Int});
+        this.shader.setValue(this.posLoc, [this.position.x, this.position.y, this.position.z], ${UNIFORM_VEC3: Int});
+        this.shader.setValue(this.targetLoc, [this.target.x, this.target.y, this.target.z], ${UNIFORM_VEC3: Int});
+        
+        //TODO: Refactor this into a function
+        var color = [(this.color.r / 255), (this.color.g / 255), (this.color.b / 255), (this.color.a / 255)];
+        this.shader.setValue(this.colorLoc, color, ${UNIFORM_VEC4: Int});
+    }
+}
+
+#[promote] abstract RShader: Shader {
+    public static function new(vsName: CString, fsName: CString): RShader {
+        return LoadShader(vsName, fsName);
+    }
+
+    public function getLocation(name: CString): Int {
+        return GetShaderLocation(this, name);
+    }
+
+    public function setValue(uniformLoc: Int, value: Ptr[Void], uniformType: Int) {
+        SetShaderValue(this, uniformLoc, value, uniformType);
+    }
+
+    public function delete() {
+        UnloadShader(this);
+    }
+}
+
+#[promote]
+abstract RTransform: Transform {
+    public static function new(): RTransform {
+        return struct Transform {
+            translation: RVector3.zero(),
+            rotation: RQuaternion.new(),
+            scale: RVector3.zero()
+        } as RTransform;
+    }
+}
+
+
 #[promote]
 abstract RMatrix: Matrix {
     public static function new(): RMatrix {
@@ -30,6 +131,9 @@ abstract RMatrix: Matrix {
     rules{
         ($this.up) => $this.getUp();
         ($this.up = $vector) => $this.setUp($vector);
+
+        ($this.forward) => $this.getForward();
+        ($this.forward = $vector) => $this.setForward($vector);
     }
 }
 
@@ -47,15 +151,149 @@ abstract RQuaternion: Quaternion {
 #[promote]
 abstract RModel: Model {
     public static function new(modelLoc: CString): RModel {
-        return LoadModel(modelLoc); 
+        return LoadModel(modelLoc) as RModel; 
+    }
+
+    public static function fromMesh(mesh: Mesh): RModel {
+        return LoadModelFromMesh(mesh);
     }
 
     public function delete(){
         UnloadModel(this);
     }
+}
 
-    public function setMaterialTexture(texture: RTexture, map: Int, materialLoc: Int){
-        this.materials[materialLoc].maps[map].texture = texture;
+#[promote]
+abstract RMaterial: Material {
+
+    //Albedo
+    public function setAlbedoTexture(texture: RTexture) {
+        this.maps[${MAP_ALBEDO: Int}].texture = texture;
+    }
+
+    public function setAlbedoColor(color: RColor) {
+        this.maps[${MAP_ALBEDO: Int}].color = color;
+    }
+
+    public function setAlbedoValue(value: Float) {
+        this.maps[${MAP_ALBEDO: Int}].value = value;
+    }
+
+    //Normal
+    public function setNormalTexture(texture: RTexture) {
+        this.maps[${MAP_NORMAL: Int}].texture = texture;
+    }
+
+    public function setNormalColor(color: RColor) {
+        this.maps[${MAP_NORMAL: Int}].color = color;
+    }
+
+    public function setNormalValue(value: Float) {
+        this.maps[${MAP_NORMAL: Int}].value = value;
+    }
+
+    //Metalness
+    public function setMetalnessTexture(texture: RTexture) {
+        this.maps[${MAP_METALNESS: Int}].texture = texture;
+    }
+
+    public function setMetalnessColor(color: RColor) {
+        this.maps[${MAP_METALNESS: Int}].color = color;
+    }
+
+    public function setMetalnessValue(value: Float) {
+        this.maps[${MAP_METALNESS: Int}].value = value;
+    }
+
+    //Roughness
+    public function setRoughnessTexture(texture: RTexture) {
+        this.maps[${MAP_ROUGHNESS: Int}].texture = texture;
+    }
+
+    public function setRoughnessColor(color: RColor) {
+        this.maps[${MAP_ROUGHNESS: Int}].color = color;
+    }
+
+    public function setRoughnessValue(value: Float) {
+        this.maps[${MAP_ROUGHNESS: Int}].value = value;
+    }
+
+    //Occlusion
+    public function setOcclusionTexture(texture: RTexture) {
+        this.maps[${MAP_OCCLUSION: Int}].texture = texture;
+    }
+
+    public function setOcclusionColor(color: RColor) {
+        this.maps[${MAP_OCCLUSION: Int}].color = color;
+    }
+
+    public function setOcclusionValue(value: Float) {
+        this.maps[${MAP_OCCLUSION: Int}].value = value;
+    }
+
+    //Emission
+    public function setEmissionTexture(texture: RTexture) {
+        this.maps[${MAP_EMISSION: Int}].texture = texture;
+    }
+
+    public function setEmissionColor(color: RColor) {
+        this.maps[${MAP_EMISSION: Int}].color = color;
+    }
+
+    public function setEmissionValue(value: Float) {
+        this.maps[${MAP_EMISSION: Int}].value = value;
+    }
+
+    //Height
+    public function setHeightTexture(texture: RTexture) {
+        this.maps[${MAP_HEIGHT: Int}].texture = texture;
+    }
+
+    public function setHeightColor(color: RColor) {
+        this.maps[${MAP_HEIGHT: Int}].color = color;
+    }
+
+    public function setHeightValue(value: Float) {
+        this.maps[${MAP_HEIGHT: Int}].value = value;
+    }
+
+    //Irradiance
+    public function setIrradianceTexture(texture: RTexture) {
+        this.maps[${MAP_IRRADIANCE: Int}].texture = texture;
+    }
+
+    public function setIrradianceColor(color: RColor) {
+        this.maps[${MAP_IRRADIANCE: Int}].color = color;
+    }
+
+    public function setIrradianceValue(value: Float) {
+        this.maps[${MAP_IRRADIANCE: Int}].value = value;
+    }
+
+    //Prefilter
+    public function setPrefilterTexture(texture: RTexture) {
+        this.maps[${MAP_PREFILTER: Int}].texture = texture;
+    }
+
+    public function setPrefilterColor(color: RColor) {
+        this.maps[${MAP_PREFILTER: Int}].color = color;
+    }
+
+    public function setPrefilterValue(value: Float) {
+        this.maps[${MAP_PREFILTER: Int}].value = value;
+    }
+
+    //Brdf
+    public function setBrdfTexture(texture: RTexture) {
+        this.maps[${MAP_BRDF: Int}].texture = texture;
+    }
+
+    public function setBrdfColor(color: RColor) {
+        this.maps[${MAP_BRDF: Int}].color = color;
+    }
+
+    public function setBrdfValue(value: Float) {
+        this.maps[${MAP_BRDF: Int}].value = value;
     }
 }
 
@@ -63,6 +301,10 @@ abstract RModel: Model {
 abstract RTexture: Texture {
     public static function new(textureLoc: CString): RTexture {
         return LoadTexture(textureLoc); 
+    }
+
+    public function setFilter(filter: Int) {
+        SetTextureFilter(this, filter);
     }
 
     public function delete(){
@@ -90,6 +332,14 @@ abstract RCamera3D: Camera3D {
     public function updateCamera() {
         UpdateCamera(this);
     }
+
+    public function forward(): RVector3 {
+        return RVector3.fromVector3(Vector3Subtract(this.position, this.target));
+    }
+
+    public function right(): RVector3 {
+        return RVector3.fromVector3(Vector3CrossProduct(this.up, this.forward()));
+    }
 }
 
 #[promote]
@@ -99,6 +349,10 @@ abstract RVector2: Vector2 {
             x: n1,
             y: n2
         };
+    }
+
+    public static function zero(): RVector2 {
+        return Self.new(0, 0);
     }
 
     public static function fromVector2(from: Vector2){
@@ -146,6 +400,10 @@ abstract RVector3: Vector3 {
         return RVector3.new(0,0,0);
     }
 
+    public static function one(): RVector3 {
+        return RVector3.new(1.0,1.0,1.0);
+    }
+
     public function copy(): RVector3 {
         return struct Self { x: this.x, y: this.y, z: this.z };
     }
@@ -185,8 +443,14 @@ abstract RVector3: Vector3 {
         return Vector3Distance(this, other);
     }
 
-    public function normalize(){
+    public function normalize(): RVector3 {
         this.set(Vector3Normalize(this));
+        return this;
+    }
+
+    public function negate(): RVector3 {
+        this.set(Vector3Negate(this));
+        return this;
     }
 
     public function print(){
@@ -194,7 +458,7 @@ abstract RVector3: Vector3 {
     }
 
     rules {
-        ($this + $other) => ($this.copy().add($other));
+        ($this + $other) => Vector3Add($this, $other);
         ($this - $other) => ($this.copy().subtract($other));
 
         ($this += $other) => $this.add($other);
@@ -202,29 +466,32 @@ abstract RVector3: Vector3 {
     }
 }
 
-function main(){
-    var myVector3 = RVector3.new(12, 24, 12);
-    var otherVector3 = RVector3.new(12, 24, 12);
-    printf("%f\n", myVector3.x);
-    printf("%f\n", otherVector3.x);
+#[promote]
+abstract RColor: Color {
+    public static function new(red: Uint8 = 0, green: Uint8 = 0, blue: Uint8 = 0, alpha: Uint8 = 1) : RColor {
+        return struct RColor {
+            r: red,
+            g: green,
+            b: blue,
+            a: alpha
+        };
+    }
 
-    var vecNew = myVector3 + otherVector3;
-    printf("%f\n", vecNew.x);
-    printf("%f\n", myVector3.x);
-    printf("%f\n", otherVector3.x);
+    public function toString(): Ptr[Char] {
+        var colorString: Ptr[Char] = malloc((sizeof Char) * 30);
+        sprintf(colorString, "Color: %d, %d, %d, %d\n", this.r, this.g, this.b, this.a);
+        return colorString;
+    }
 
-    var vecw = myVector3 + otherVector3;
-    printf("%f\n", vecw.x);
-    printf("%f\n", myVector3.x);
-    printf("%f\n", otherVector3.x);
-
-    var vecwe = myVector3 + otherVector3;
-    printf("%f\n", vecwe.x);
-    printf("%f\n", myVector3.x);
-    printf("%f\n", otherVector3.x);
-
-    var newVec = myVector3.copy();
-    printf("%f\n", newVec.x);
-    printf("%f\n", myVector3.x);
-    printf("%f\n", otherVector3.x);
+    public static const lightGray = Self.new(200, 200, 200, 255);
+    public static const gray = Self.new(130, 130, 130, 255);
+    public static const darkGray = Self.new(80, 80, 80, 255);
+    public static const yellow = Self.new(253, 249, 0, 255);
+    public static const gold = Self.new(255, 203, 0, 255);
+    public static const orange = Self.new();
+    public static const blue = Self.new(0, 121, 241, 255);
+    public static const lime = Self.new(0, 158, 47, 255);
+    public static const maroon = Self.new(190, 33, 55, 255);
+    public static const white = Self.new(255, 255, 255, 255);
+    public static const black = Self.new(0, 0, 0, 255);
 }
